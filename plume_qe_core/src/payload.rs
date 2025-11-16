@@ -1,7 +1,9 @@
 use blake3::Hasher;
 use serde::{Deserialize, Serialize};
+use subtle::ConstantTimeEq;
+use zeroize::{Zeroize, Zeroizing};
 
-use crate::aead::{AEAD_NONCE_BYTES, decrypt_aead, encrypt_aead};
+use crate::aead::{AEAD_NONCE_BYTES, AEAD_TAG_BYTES, decrypt_aead_into, encrypt_aead_into};
 use crate::context::fingerprint_tag;
 use crate::crypto::{PlumeError, PolyPublicKey, PolySecretKey};
 use crate::kem::{KEM_SHARED_KEY_BYTES, KemCiphertext, decapsulate, encapsulate};
@@ -59,16 +61,20 @@ pub fn encrypt_payload(
     fingerprint: &[u8],
 ) -> Result<EncryptedPayload, PlumeError> {
     let (kem, shared) = encapsulate(engine, keys, seed, message_index)?;
+    let shared = Zeroizing::new(shared);
     let tag = fingerprint_tag(fingerprint);
 
-    let cover_key = derive_layer_key(&shared, b"cover");
+    let mut cover_key = derive_layer_key(&shared, b"cover");
     let cover_nonce = derive_nonce(seed, message_index, &kem, &tag, b"cover");
-    let cover_ciphertext = encrypt_aead(
+    let mut cover_ciphertext = Vec::with_capacity(options.cover_plaintext.len() + AEAD_TAG_BYTES);
+    encrypt_aead_into(
         &cover_key,
         &cover_nonce,
         options.cover_plaintext,
         options.cover_aad,
+        &mut cover_ciphertext,
     )?;
+    cover_key.zeroize();
     let cover_layer = PayloadLayer {
         nonce: cover_nonce,
         ciphertext: cover_ciphertext,
@@ -76,10 +82,18 @@ pub fn encrypt_payload(
     };
 
     let (inner_layer, has_inner_view) = if let Some(inner_plain) = options.inner_plaintext {
-        let inner_key = derive_layer_key(&shared, b"inner");
+        let mut inner_key = derive_layer_key(&shared, b"inner");
         let inner_aad = options.inner_aad.unwrap_or(&[]);
         let inner_nonce = derive_nonce(seed, message_index, &kem, &tag, b"inner");
-        let inner_ciphertext = encrypt_aead(&inner_key, &inner_nonce, inner_plain, inner_aad)?;
+        let mut inner_ciphertext = Vec::with_capacity(inner_plain.len() + AEAD_TAG_BYTES);
+        encrypt_aead_into(
+            &inner_key,
+            &inner_nonce,
+            inner_plain,
+            inner_aad,
+            &mut inner_ciphertext,
+        )?;
+        inner_key.zeroize();
         (
             Some(PayloadLayer {
                 nonce: inner_nonce,
@@ -138,15 +152,23 @@ pub fn decrypt_payload_view(
         });
     }
     let tag = fingerprint_tag(fingerprint);
-    if payload.fingerprint_tag != tag {
+    if payload.fingerprint_tag.ct_eq(&tag).unwrap_u8() == 0 {
         return Err(PlumeError::FingerprintMismatch);
     }
-    let shared = decapsulate(engine, keys, seed, message_index, &payload.kem)?;
+    let shared = Zeroizing::new(decapsulate(
+        engine,
+        keys,
+        seed,
+        message_index,
+        &payload.kem,
+    )?);
 
     match view {
         PayloadView::Cover => {
-            let key = derive_layer_key(&shared, b"cover");
-            decrypt_layer(&payload.cover_layer, &key)
+            let mut key = derive_layer_key(&shared, b"cover");
+            let result = decrypt_layer(&payload.cover_layer, &key);
+            key.zeroize();
+            result
         }
         PayloadView::Inner => {
             if !payload.has_inner_view {
@@ -156,8 +178,10 @@ pub fn decrypt_payload_view(
                 .inner_layer
                 .as_ref()
                 .ok_or(PlumeError::MissingInnerView)?;
-            let key = derive_layer_key(&shared, b"inner");
-            decrypt_layer(layer, &key)
+            let mut key = derive_layer_key(&shared, b"inner");
+            let result = decrypt_layer(layer, &key);
+            key.zeroize();
+            result
         }
     }
 }
@@ -166,7 +190,15 @@ fn decrypt_layer(
     layer: &PayloadLayer,
     key: &[u8; KEM_SHARED_KEY_BYTES],
 ) -> Result<Vec<u8>, PlumeError> {
-    decrypt_aead(key, &layer.nonce, &layer.ciphertext, &layer.aad)
+    let mut output = Vec::with_capacity(layer.ciphertext.len().saturating_sub(AEAD_TAG_BYTES));
+    decrypt_aead_into(
+        key,
+        &layer.nonce,
+        &layer.ciphertext,
+        &layer.aad,
+        &mut output,
+    )?;
+    Ok(output)
 }
 
 fn derive_layer_key(

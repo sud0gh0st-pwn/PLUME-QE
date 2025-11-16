@@ -166,6 +166,9 @@ assert_eq!(recovered, b"hello");
 automatically following the security-level defaults (e.g., multi-view payloads
 for `--security-level standard|paranoid`).
 
+See `docs/api_overview.md` for the full stable API surface (types, error model,
+serialization notes).
+
 ## Phase-4 Spec Addendum
 
 - **Chaotic Scheduler** – logistic map (`μ` default 3.99) with 48-bit fixed-point
@@ -186,7 +189,11 @@ for `--security-level standard|paranoid`).
   validated against payload tags.
 - **Serialization Versioning** – public bundles, secret bundles, KEM
   ciphertexts, direct ciphertexts, and payloads all carry explicit version
-  fields checked during deserialization.
+  fields checked during deserialization. `version_major = 1`, `version_minor = 0`
+  are frozen for Phase-6; golden vectors fail if wire formats drift.
+- **Side-Channel Hygiene** – integrity/fingerprint comparisons use constant-time
+  checks; secret material (secret keys, shared/shared AEAD keys, fingerprints) is
+  zeroized on drop using the `zeroize` policy.
 
 ### IND Game Definitions (Informal)
 

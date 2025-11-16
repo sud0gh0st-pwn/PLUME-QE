@@ -42,14 +42,14 @@ static PROFILE_SET_PHASE1: [Profile; 3] = [
 const PROFILE_STANDARD_ALPHA: Profile = Profile {
     id: ProfileId(10),
     name: "standard-alpha",
-    ring: RingParams::new(32, 131072, 256),
+    ring: RingParams::new_ntt(32, 12289, 256),
     noise_width: 4,
 };
 
 const PROFILE_STANDARD_BETA: Profile = Profile {
     id: ProfileId(11),
     name: "standard-beta",
-    ring: RingParams::new(32, 196608, 256),
+    ring: RingParams::new_ntt(32, 40961, 256),
     noise_width: 5,
 };
 
@@ -63,14 +63,14 @@ const PROFILE_PARANOID_ALPHA: Profile = Profile {
 const PROFILE_PARANOID_BETA: Profile = Profile {
     id: ProfileId(21),
     name: "paranoid-beta",
-    ring: RingParams::new(64, 524288, 256),
+    ring: RingParams::new_ntt(64, 65537, 256),
     noise_width: 7,
 };
 
 const PROFILE_PARANOID_GAMMA: Profile = Profile {
     id: ProfileId(22),
     name: "paranoid-gamma",
-    ring: RingParams::new(64, 786432, 256),
+    ring: RingParams::new_ntt(64, 786433, 256),
     noise_width: 8,
 };
 

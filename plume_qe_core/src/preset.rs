@@ -15,6 +15,7 @@ pub struct SecurityPreset {
     pub scheduler: SchedulerParams,
     pub default_multiview: bool,
     pub default_inner_view: bool,
+    pub default_intensity: PolymorphismIntensity,
 }
 
 pub fn security_preset(level: SecurityLevel) -> SecurityPreset {
@@ -25,6 +26,7 @@ pub fn security_preset(level: SecurityLevel) -> SecurityPreset {
             scheduler: SchedulerParams::new(3.90, 40),
             default_multiview: false,
             default_inner_view: false,
+            default_intensity: PolymorphismIntensity::Low,
         },
         SecurityLevel::Standard => SecurityPreset {
             level,
@@ -32,6 +34,7 @@ pub fn security_preset(level: SecurityLevel) -> SecurityPreset {
             scheduler: SchedulerParams::new(3.97, 48),
             default_multiview: true,
             default_inner_view: false,
+            default_intensity: PolymorphismIntensity::Medium,
         },
         SecurityLevel::Paranoid => SecurityPreset {
             level,
@@ -39,6 +42,7 @@ pub fn security_preset(level: SecurityLevel) -> SecurityPreset {
             scheduler: SchedulerParams::new(3.99, 54),
             default_multiview: true,
             default_inner_view: true,
+            default_intensity: PolymorphismIntensity::High,
         },
     }
 }

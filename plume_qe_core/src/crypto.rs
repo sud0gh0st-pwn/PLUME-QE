@@ -4,7 +4,9 @@ use rand_core::{CryptoRng, RngCore};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
+use subtle::ConstantTimeEq;
 use thiserror::Error;
+use zeroize::Zeroize;
 
 use crate::polymorph::PolymorphismEngine;
 use crate::profiles::{Profile, ProfileId, ProfileRegistry};
@@ -78,6 +80,12 @@ pub struct SecretKey {
     pub s: RingElement,
 }
 
+impl Zeroize for SecretKey {
+    fn zeroize(&mut self) {
+        self.s.zeroize();
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyPair {
     pub public: PublicKey,
@@ -109,6 +117,14 @@ pub struct PolySecretKey {
 impl PolySecretKey {
     pub fn get(&self, id: ProfileId) -> Option<&SecretKey> {
         self.keys.get(&id)
+    }
+}
+
+impl Drop for PolySecretKey {
+    fn drop(&mut self) {
+        for secret in self.keys.values_mut() {
+            secret.zeroize();
+        }
     }
 }
 
@@ -179,6 +195,12 @@ pub struct PolyKeyPair {
     pub version: u16,
     pub public: PolyPublicKey,
     pub secret: PolySecretKey,
+}
+
+impl Drop for PolyKeyPair {
+    fn drop(&mut self) {
+        // public keys are not sensitive; secret is zeroized via its Drop impl
+    }
 }
 
 impl Serialize for PolyKeyPair {
@@ -274,6 +296,7 @@ impl<'de> Deserialize<'de> for Ciphertext {
     }
 }
 
+/// Generates a single-profile key pair for testing or low-level integrations.
 pub fn keygen(profile: &Profile) -> KeyPair {
     let mut rng = secure_rng();
     keygen_with_rng(profile, &mut rng)
@@ -298,6 +321,7 @@ pub fn keygen_with_rng<R: CryptoRng + RngCore>(profile: &Profile, rng: &mut R) -
     }
 }
 
+/// Generates a polymorphic key bundle covering every profile in the registry.
 pub fn keygen_bundle(registry: ProfileRegistry<'_>) -> PolyKeyPair {
     let mut rng = secure_rng();
     keygen_bundle_with_rng(registry, &mut rng)
@@ -411,7 +435,7 @@ pub(crate) fn decrypt_with_profile_guard(
             found: ciphertext.version,
         });
     }
-    if ciphertext.context_guard != *expected_guard {
+    if ciphertext.context_guard.ct_eq(expected_guard).unwrap_u8() == 0 {
         return Err(PlumeError::ContextGuardMismatch);
     }
 
@@ -428,7 +452,7 @@ pub(crate) fn decrypt_with_profile_guard(
 
     plaintext.truncate(ciphertext.plaintext_len);
     let expected_tag = compute_integrity_tag(profile.id, &plaintext);
-    if ciphertext.integrity_tag != expected_tag {
+    if ciphertext.integrity_tag.ct_eq(&expected_tag).unwrap_u8() == 0 {
         return Err(PlumeError::IntegrityCheckFailed);
     }
     Ok(plaintext)
@@ -576,6 +600,29 @@ mod tests {
                 let recovered = decrypt_with_profile(profile, &pair.secret, &ct).unwrap();
                 assert_eq!(msg, recovered);
             }
+        }
+    }
+
+    #[test]
+    fn standard_registry_roundtrip() {
+        let engine = PolymorphismEngine::new(ProfileRegistry::standard());
+        let mut rng = secure_rng();
+        let pair = keygen_bundle_with_rng(engine.registry(), &mut rng);
+        let seed = b"standard-bench";
+        for msg_index in 0..4u64 {
+            let payload = format!("standard-{msg_index}");
+            let mut enc_rng = secure_rng();
+            let ciphertext = encrypt(
+                &engine,
+                &pair.public,
+                seed,
+                msg_index,
+                payload.as_bytes(),
+                &mut enc_rng,
+            )
+            .unwrap();
+            let recovered = decrypt(&engine, &pair.secret, seed, msg_index, &ciphertext).unwrap();
+            assert_eq!(recovered, payload.as_bytes());
         }
     }
 

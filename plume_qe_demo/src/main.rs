@@ -32,8 +32,8 @@ struct Cli {
     context: Option<String>,
     #[arg(long, global = true, value_enum, default_value = "standard")]
     security_level: SecurityLevelArg,
-    #[arg(long, global = true, value_enum, default_value = "medium")]
-    intensity: IntensityArg,
+    #[arg(long, global = true, value_enum)]
+    intensity: Option<IntensityArg>,
     #[arg(long, global = true)]
     scheduler_mu: Option<f64>,
     #[arg(long, global = true)]
@@ -189,8 +189,11 @@ fn main() -> Result<()> {
     init_logging(cli.debug);
     let fingerprint = derive_context_fingerprint(cli.context.as_deref());
     let security_level: SecurityLevel = cli.security_level.into();
-    let intensity: PolymorphismIntensity = cli.intensity.into();
     let preset = security_preset(security_level);
+    let intensity: PolymorphismIntensity = cli
+        .intensity
+        .map(Into::into)
+        .unwrap_or(preset.default_intensity);
     let scheduler_params = SchedulerParams {
         mu: cli.scheduler_mu.unwrap_or(preset.scheduler.mu),
         precision: cli

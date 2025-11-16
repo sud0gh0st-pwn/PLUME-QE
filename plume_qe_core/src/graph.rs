@@ -25,6 +25,29 @@ const NODE0_EDGES: &[u8] = &[1, 2];
 const NODE1_EDGES: &[u8] = &[0, 2];
 const NODE2_EDGES: &[u8] = &[0, 1];
 
+const EDGE_POOL_PHASE1: [u8; 6] = [1, 2, 0, 2, 0, 1];
+
+#[derive(Clone, Copy, Debug)]
+struct NodeMeta {
+    edge_offset: u16,
+    edge_len: u8,
+}
+
+static NODE_META: &[NodeMeta] = &[
+    NodeMeta {
+        edge_offset: 0,
+        edge_len: 2,
+    },
+    NodeMeta {
+        edge_offset: 2,
+        edge_len: 2,
+    },
+    NodeMeta {
+        edge_offset: 4,
+        edge_len: 2,
+    },
+];
+
 static GRAPH_NODES: &[GraphNode] = &[
     GraphNode {
         id: 0,
@@ -49,19 +72,26 @@ static GRAPH_NODES: &[GraphNode] = &[
 #[derive(Clone, Debug)]
 pub struct GraphWalk {
     nodes: &'static [GraphNode],
+    meta: &'static [NodeMeta],
+    edges: &'static [u8],
 }
 
 impl GraphWalk {
     pub fn phase1() -> Self {
-        Self { nodes: GRAPH_NODES }
+        Self {
+            nodes: GRAPH_NODES,
+            meta: NODE_META,
+            edges: &EDGE_POOL_PHASE1,
+        }
     }
 
     pub fn node_for_message(&self, seed: &[u8], message_index: u64) -> &'static GraphNode {
+        self.walk_path(seed, message_index)
+    }
+
+    pub fn walk_path(&self, seed: &[u8], steps: u64) -> &'static GraphNode {
         let mut node = self.start_node(seed);
-        if message_index == 0 {
-            return node;
-        }
-        for step in 0..message_index {
+        for step in 0..steps {
             node = self.step_node(seed, step, node);
         }
         node
@@ -74,12 +104,16 @@ impl GraphWalk {
     }
 
     fn step_node(&self, seed: &[u8], step: u64, node: &'static GraphNode) -> &'static GraphNode {
-        if node.edges.is_empty() {
+        let meta = &self.meta[node.id as usize];
+        if meta.edge_len == 0 {
             return node;
         }
         let digest = prism(seed, step + node.id as u64, b"edge");
-        let idx = (digest % (node.edges.len() as u64)) as usize;
-        &self.nodes[node.edges[idx] as usize]
+        let edge_len = meta.edge_len as usize;
+        let offset = meta.edge_offset as usize;
+        let idx = (digest % (edge_len as u64)) as usize;
+        let target = self.edges[offset + idx] as usize;
+        &self.nodes[target]
     }
 }
 
@@ -120,5 +154,16 @@ mod tests {
             .map(|i| graph.node_for_message(seed_b, i).id)
             .collect();
         assert_ne!(path_a, path_b);
+    }
+
+    #[test]
+    fn walk_path_matches_node_for_message() {
+        let graph = GraphWalk::phase1();
+        let seed = b"walk-seed";
+        for depth in 0..16u64 {
+            let by_path = graph.walk_path(seed, depth).id;
+            let by_message = graph.node_for_message(seed, depth).id;
+            assert_eq!(by_path, by_message);
+        }
     }
 }

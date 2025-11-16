@@ -1,6 +1,7 @@
 use blake3::Hasher;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use zeroize::Zeroizing;
 
 use crate::crypto::{Ciphertext, PlumeError, PolyPublicKey, PolySecretKey, decrypt, encrypt};
 use crate::polymorph::{PolymorphismEngine, ProfileSelection};
@@ -62,14 +63,14 @@ pub fn encapsulate(
 ) -> Result<(KemCiphertext, [u8; KEM_SHARED_KEY_BYTES]), PlumeError> {
     let selection = engine.select_profile_with_trace(seed, message_index);
     let mut noise_rng = derive_session_rng(seed, message_index, b"plume-kem-noise");
-    let mut kem_material = [0u8; KEM_SHARED_KEY_BYTES];
+    let mut kem_material = Zeroizing::new([0u8; KEM_SHARED_KEY_BYTES]);
     fill_session_bytes(
         seed,
         message_index,
         b"plume-kem-material",
-        &mut kem_material,
+        kem_material.as_mut(),
     );
-    for byte in &mut kem_material {
+    for byte in kem_material.iter_mut() {
         *byte &= 0x3F;
     }
     let ciphertext = encrypt(
@@ -77,10 +78,10 @@ pub fn encapsulate(
         keys,
         seed,
         message_index,
-        &kem_material,
+        kem_material.as_ref(),
         &mut noise_rng,
     )?;
-    let shared_key = derive_shared_key(&kem_material, &selection, &ciphertext);
+    let shared_key = derive_shared_key(kem_material.as_ref(), &selection, &ciphertext);
     let kem = KemCiphertext {
         version: KEM_CIPHERTEXT_VERSION,
         ciphertext,
@@ -108,8 +109,8 @@ pub fn decapsulate(
     if kem.submode_bits != selection.submode_bits {
         return Err(PlumeError::SchedulerMismatch);
     }
-    let kem_material = decrypt(engine, keys, seed, message_index, &kem.ciphertext)?;
-    let shared_key = derive_shared_key(&kem_material, &selection, &kem.ciphertext);
+    let kem_material = Zeroizing::new(decrypt(engine, keys, seed, message_index, &kem.ciphertext)?);
+    let shared_key = derive_shared_key(kem_material.as_ref(), &selection, &kem.ciphertext);
     Ok(shared_key)
 }
 
