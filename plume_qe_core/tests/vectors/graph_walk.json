@@ -1,0 +1,75 @@
+{
+  "description": "Graph-walk traversal",
+  "nodes": [
+    {
+      "encoding": "Dense",
+      "message_index": 0,
+      "node_id": 2,
+      "profiles": [
+        2,
+        0
+      ]
+    },
+    {
+      "encoding": "Linear",
+      "message_index": 1,
+      "node_id": 0,
+      "profiles": [
+        0,
+        1
+      ]
+    },
+    {
+      "encoding": "Wide",
+      "message_index": 2,
+      "node_id": 1,
+      "profiles": [
+        1
+      ]
+    },
+    {
+      "encoding": "Linear",
+      "message_index": 3,
+      "node_id": 0,
+      "profiles": [
+        0,
+        1
+      ]
+    },
+    {
+      "encoding": "Wide",
+      "message_index": 4,
+      "node_id": 1,
+      "profiles": [
+        1
+      ]
+    },
+    {
+      "encoding": "Linear",
+      "message_index": 5,
+      "node_id": 0,
+      "profiles": [
+        0,
+        1
+      ]
+    },
+    {
+      "encoding": "Wide",
+      "message_index": 6,
+      "node_id": 1,
+      "profiles": [
+        1
+      ]
+    },
+    {
+      "encoding": "Linear",
+      "message_index": 7,
+      "node_id": 0,
+      "profiles": [
+        0,
+        1
+      ]
+    }
+  ],
+  "seed": "phase5-graph-seed"
+}

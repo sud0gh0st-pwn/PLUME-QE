@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "plume_qe_core",
+    "plume_qe_demo",
+]
+resolver = "2"
